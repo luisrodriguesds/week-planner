@@ -52,7 +52,30 @@ Regra inbound **só para rede privada**:
 
 Confirmar que o telemóvel **fora do Wi‑Fi** não acede à app.
 
-## 5. Serviço Windows (NSSM)
+## 5. WSL2 no Windows 10 (este PC)
+
+O WSL2 usa NAT: telemóveis na Wi‑Fi não chegam ao IP `172.x` do Ubuntu. Encaminha a porta do Windows para o WSL.
+
+1. App em produção no Ubuntu (`pm2` em `dist/server/index.js`, `HOST=0.0.0.0`).
+2. PowerShell **como Administrador** (depois de cada `wsl --shutdown`):
+
+```powershell
+cd \\wsl$\Ubuntu\home\luis\personal\week-planner
+powershell -ExecutionPolicy Bypass -File .\scripts\expose-wsl-lan.ps1
+```
+
+3. A rede Wi‑Fi tem de estar classificada como **Privada** (o Windows põe muitas redes como Pública, e a regra de firewall só cobre o perfil privado):
+
+```powershell
+Get-NetConnectionProfile
+Set-NetConnectionProfile -InterfaceAlias 'Wi-Fi' -NetworkCategory Private
+```
+
+4. Na LAN: `http://192.168.1.209:3847` (IPv4 da Wi‑Fi; confirma com `ipconfig`).
+
+Não faças port forward no router. Se o NordVPN estiver ligado, activa “Allow local network discovery” (senão a LAN fica bloqueada).
+
+## 6. Serviço Windows (NSSM)
 
 Instalar [NSSM](https://nssm.cc/) e registar o serviço:
 
@@ -66,14 +89,14 @@ nssm start GoGymPlanner
 
 Alternativa: **pm2-windows-service**.
 
-## 6. Segundo utilizador (ex.: esposa)
+## 7. Segundo utilizador (ex.: esposa)
 
 1. Login como **admin**
 2. **Admin** → criar user (email + password)
 3. A pessoa faz login na rede de casa
 4. **Conta** → `numcliente` + `idcliente` GoGym → validar
 
-## 7. Updates
+## 8. Updates
 
 ```powershell
 cd C:\gogym-bot
@@ -84,7 +107,7 @@ npm run db:migrate
 nssm restart GoGymPlanner
 ```
 
-## 8. Desenvolvimento (Mac/Linux)
+## 9. Desenvolvimento (Mac/Linux)
 
 ```bash
 npm run dev

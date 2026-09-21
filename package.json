@@ -6,12 +6,14 @@
     "dev": "concurrently -n api,web -c blue,green \"tsx watch src/server/index.ts\" \"vite --config src/web/vite.config.ts\"",
     "dev:api": "tsx watch src/server/index.ts",
     "dev:web": "vite --config src/web/vite.config.ts",
-    "build": "tsc && vite build --config src/web/vite.config.ts",
+    "build": "tsc && vite build --config src/web/vite.config.ts && npm run build:migrations",
+    "build:migrations": "node scripts/copy-migrations.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "tsx scripts/migrate.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
-    "bot:execute": "tsx scripts/execute-plan.ts"
+    "bot:execute": "tsx scripts/execute-plan.ts",
+    "prod:up": "pm2 start dist/server/index.js --name gogym-planner && pm2 save"
   },
   "engines": {
     "node": ">=22"
