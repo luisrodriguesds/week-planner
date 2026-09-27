@@ -43,32 +43,33 @@ function buildWeekTabs(slots: ScheduleSlot[]): DayTab[] {
   });
 }
 
-function todayTabIndex(tabs: DayTab[], slots: ScheduleSlot[]): number {
-  const today = new Date();
-  const match = tabs.findIndex((tab) => {
-    const slot = slots.find((item) => dayIndex(item.DataHoraAula) === tab.index);
-    if (!slot) return false;
-    const slotDate = parseGoGymLocalDate(slot.DataHoraAula);
-    return (
-      slotDate.getFullYear() === today.getFullYear() &&
-      slotDate.getMonth() === today.getMonth() &&
-      slotDate.getDate() === today.getDate()
-    );
-  });
-  if (match >= 0) return match;
+function startOfLocalDay(date: Date): Date {
+  const day = new Date(date);
+  day.setHours(0, 0, 0, 0);
+  return day;
+}
 
-  const monday = tabs[0];
-  if (!monday) return 0;
-  const mondaySlot = slots.find((item) => dayIndex(item.DataHoraAula) === 0);
-  if (!mondaySlot) return 0;
-  const weekStart = parseGoGymLocalDate(mondaySlot.DataHoraAula);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
-  if (today >= weekStart && today <= weekEnd) {
-    const jsDay = today.getDay();
-    return jsDay === 0 ? 6 : jsDay - 1;
+function slotDateForTab(slots: ScheduleSlot[], tabIndex: number): Date | null {
+  const slot = slots.find((item) => dayIndex(item.DataHoraAula) === tabIndex);
+  if (!slot) return null;
+  return startOfLocalDay(parseGoGymLocalDate(slot.DataHoraAula));
+}
+
+/** Prefer today's tab; if that calendar day is missing, pick the next day ahead. */
+function todayTabIndex(tabs: DayTab[], slots: ScheduleSlot[], now = new Date()): number {
+  const today = startOfLocalDay(now);
+  let nextDayIndex = -1;
+
+  for (const tab of tabs) {
+    const tabDay = slotDateForTab(slots, tab.index);
+    if (!tabDay) continue;
+    if (tabDay.getTime() === today.getTime()) return tab.index;
+    if (nextDayIndex < 0 && tabDay.getTime() > today.getTime()) {
+      nextDayIndex = tab.index;
+    }
   }
-  return 0;
+
+  return nextDayIndex >= 0 ? nextDayIndex : 0;
 }
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
