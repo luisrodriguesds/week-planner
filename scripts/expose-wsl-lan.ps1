@@ -41,9 +41,13 @@ netsh advfirewall firewall add rule name=$ruleName dir=in action=allow protocol=
 
 Write-Host "Forwarding 0.0.0.0:$Port -> ${wslIp}:$Port (firewall profile: private)"
 
-# The inbound rule only applies to private networks, so a Wi-Fi marked Public
-# silently blocks every other device on the LAN.
-$publicProfiles = Get-NetConnectionProfile | Where-Object { $_.NetworkCategory -eq "Public" }
-foreach ($profile in $publicProfiles) {
-  Write-Warning "Network '$($profile.Name)' ($($profile.InterfaceAlias)) is Public — LAN access is blocked. Fix with: Set-NetConnectionProfile -InterfaceAlias '$($profile.InterfaceAlias)' -NetworkCategory Private"
+# The inbound rule only applies to private networks. Windows often marks Wi-Fi
+# Public again after reboot, which blocks every other device on the LAN.
+# VPN and virtual adapters are left alone.
+$publicLan = Get-NetConnectionProfile | Where-Object {
+  $_.NetworkCategory -eq "Public" -and $_.InterfaceAlias -match "^(Wi-Fi|Ethernet)"
+}
+foreach ($profile in $publicLan) {
+  Set-NetConnectionProfile -InterfaceAlias $profile.InterfaceAlias -NetworkCategory Private
+  Write-Host "Set '$($profile.Name)' ($($profile.InterfaceAlias)) to Private"
 }

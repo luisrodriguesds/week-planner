@@ -57,21 +57,14 @@ Confirmar que o telemóvel **fora do Wi‑Fi** não acede à app.
 O WSL2 usa NAT: telemóveis na Wi‑Fi não chegam ao IP `172.x` do Ubuntu. Encaminha a porta do Windows para o WSL.
 
 1. App em produção no Ubuntu (`pm2` em `dist/server/index.js`, `HOST=0.0.0.0`).
-2. PowerShell **como Administrador** (depois de cada `wsl --shutdown`):
+2. No login do Windows, a tarefa **GoGym Planner LAN** sobe o WSL, faz `pm2 resurrect` e corre `scripts/expose-wsl-lan.ps1` (portproxy + Wi‑Fi de volta a Privada). Sem isto, um reboot deixa o IP do WSL antigo ou a rede como Pública e os outros aparelhos deixam de entrar.
+3. Na LAN: `http://192.168.1.209:3847` (IPv4 da Wi‑Fi; confirma com `ipconfig`).
+
+Manual, se a tarefa falhar — PowerShell **como Administrador**:
 
 ```powershell
-cd \\wsl$\Ubuntu\home\luis\personal\week-planner
-powershell -ExecutionPolicy Bypass -File .\scripts\expose-wsl-lan.ps1
+powershell -ExecutionPolicy Bypass -File \\wsl$\Ubuntu\home\luis\personal\week-planner\scripts\expose-wsl-lan.ps1
 ```
-
-3. A rede Wi‑Fi tem de estar classificada como **Privada** (o Windows põe muitas redes como Pública, e a regra de firewall só cobre o perfil privado):
-
-```powershell
-Get-NetConnectionProfile
-Set-NetConnectionProfile -InterfaceAlias 'Wi-Fi' -NetworkCategory Private
-```
-
-4. Na LAN: `http://192.168.1.209:3847` (IPv4 da Wi‑Fi; confirma com `ipconfig`).
 
 Não faças port forward no router. Se o NordVPN estiver ligado, activa “Allow local network discovery” (senão a LAN fica bloqueada).
 
