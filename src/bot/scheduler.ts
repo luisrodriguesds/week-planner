@@ -21,7 +21,7 @@ export function createScheduler(ctx: SchedulerContext) {
   let reconcileTask: ReturnType<typeof cron.schedule> | null = null;
 
   const runPlan = (planId: number) => {
-    void executePlan(ctx.db, ctx.gogym, ctx.clock, planId);
+    void executePlan(ctx.db, ctx.gogym, planId);
   };
 
   const cancelPlanTimer = (planId: number) => {

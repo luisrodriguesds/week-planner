@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { executePlan } from "../src/bot/execute-plan.js";
 import { createGoGymClient } from "../src/gogym/client.js";
-import { createServerClock } from "../src/gogym/clock.js";
 import { getDb, migrateDb } from "../src/db/index.js";
 import { plans } from "../src/db/schema.js";
 import { loadDotEnv } from "../src/server/load-dotenv.js";
@@ -32,7 +31,6 @@ migrateDb(db);
 const baseUrl = process.env.GOGYM_BASE_URL ?? "https://gogym.gomygym.com";
 const centerId = Number(process.env.GOGYM_CENTER_ID ?? 1);
 const gogym = createGoGymClient({ baseUrl, centerId });
-const clock = createServerClock(gogym, db);
 
 const before = db.select().from(plans).where(eq(plans.id, planId)).get();
 if (!before) {
@@ -41,7 +39,7 @@ if (!before) {
 }
 
 console.log(`Executing plan ${planId} (${before.nomeAula} @ ${before.dataHoraAula}, status=${before.status})`);
-await executePlan(db, gogym, clock, planId);
+await executePlan(db, gogym, planId);
 
 const after = db.select().from(plans).where(eq(plans.id, planId)).get();
 console.log(JSON.stringify({

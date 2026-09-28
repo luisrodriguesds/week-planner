@@ -8,39 +8,15 @@ interface WeekPageProps {
   user: AuthUser;
 }
 
-const DAY_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const ROLLING_WINDOW_DAYS = 7;
+const DESKTOP_MIN_WIDTH = 901;
 
 interface DayTab {
+  dateKey: string;
   dateNum: number;
   index: number;
   label: string;
-}
-
-function dayIndex(dateTime: string): number {
-  const date = new Date(dateTime.replace(" ", "T"));
-  const jsDay = date.getDay();
-  return jsDay === 0 ? 6 : jsDay - 1;
-}
-
-function parseGoGymLocalDate(dateTime: string): Date {
-  return new Date(dateTime.replace(" ", "T"));
-}
-
-function buildWeekTabs(slots: ScheduleSlot[]): DayTab[] {
-  const anchor = slots[0];
-  if (!anchor) {
-    return DAY_LABELS.map((label, index) => ({ label, dateNum: 0, index }));
-  }
-
-  const anchorDate = parseGoGymLocalDate(anchor.DataHoraAula);
-  const monday = new Date(anchorDate);
-  monday.setDate(anchorDate.getDate() - dayIndex(anchor.DataHoraAula));
-
-  return DAY_LABELS.map((label, index) => {
-    const date = new Date(monday);
-    date.setDate(monday.getDate() + index);
-    return { label, dateNum: date.getDate(), index };
-  });
 }
 
 function startOfLocalDay(date: Date): Date {
@@ -49,27 +25,61 @@ function startOfLocalDay(date: Date): Date {
   return day;
 }
 
-function slotDateForTab(slots: ScheduleSlot[], tabIndex: number): Date | null {
-  const slot = slots.find((item) => dayIndex(item.DataHoraAula) === tabIndex);
-  if (!slot) return null;
-  return startOfLocalDay(parseGoGymLocalDate(slot.DataHoraAula));
+function toDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-/** Prefer today's tab; if that calendar day is missing, pick the next day ahead. */
-function todayTabIndex(tabs: DayTab[], slots: ScheduleSlot[], now = new Date()): number {
-  const today = startOfLocalDay(now);
-  let nextDayIndex = -1;
+function parseGoGymLocalDate(dateTime: string): Date {
+  const trimmed = (dateTime.split(".")[0] ?? dateTime).replace(" ", "T");
+  return new Date(trimmed);
+}
 
-  for (const tab of tabs) {
-    const tabDay = slotDateForTab(slots, tab.index);
-    if (!tabDay) continue;
-    if (tabDay.getTime() === today.getTime()) return tab.index;
-    if (nextDayIndex < 0 && tabDay.getTime() > today.getTime()) {
-      nextDayIndex = tab.index;
-    }
+function slotDateKey(dateTime: string): string {
+  return toDateKey(parseGoGymLocalDate(dateTime));
+}
+
+/** 7-day window starting today — matches GoGym's rolling schedule, not calendar Mon–Sun. */
+function buildWeekTabs(now = new Date()): DayTab[] {
+  const start = startOfLocalDay(now);
+  return Array.from({ length: ROLLING_WINDOW_DAYS }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return {
+      index,
+      label: WEEKDAY_LABELS[date.getDay()] ?? "?",
+      dateNum: date.getDate(),
+      dateKey: toDateKey(date),
+    };
+  });
+}
+
+function groupSlotsByDay(tabs: DayTab[], slots: ScheduleSlot[]): ScheduleSlot[][] {
+  const byKey = new Map<string, ScheduleSlot[]>();
+  for (const slot of slots) {
+    const key = slotDateKey(slot.DataHoraAula);
+    const list = byKey.get(key) ?? [];
+    list.push(slot);
+    byKey.set(key, list);
   }
 
-  return nextDayIndex >= 0 ? nextDayIndex : 0;
+  return tabs.map((tab) => {
+    const daySlots = byKey.get(tab.dateKey) ?? [];
+    return daySlots.sort((a, b) => a.DataHoraAula.localeCompare(b.DataHoraAula));
+  });
+}
+
+/** Prefer today; if today has only closed/empty classes, pick the next day with open/upcoming slots. */
+function todayTabIndex(tabs: DayTab[], grouped: ScheduleSlot[][]): number {
+  for (const tab of tabs) {
+    const daySlots = grouped[tab.index] ?? [];
+    if (daySlots.some((slot) => slot.windowStatus !== "CLOSED")) {
+      return tab.index;
+    }
+  }
+  return 0;
 }
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -80,8 +90,6 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   }, [value, delayMs]);
   return debounced;
 }
-
-const DESKTOP_MIN_WIDTH = 901;
 
 function useIsDesktop(): boolean {
   const [isDesktop, setIsDesktop] = useState(
@@ -119,24 +127,14 @@ const WeekPage: FC<WeekPageProps> = ({ user }) => {
       .finally(() => setLoading(false));
   }, [debouncedFilter]);
 
-  const weekTabs = useMemo(() => buildWeekTabs(slots), [slots]);
-
-  const grouped = useMemo(() => {
-    const days = Array.from({ length: 7 }, () => [] as ScheduleSlot[]);
-    for (const slot of slots) {
-      days[dayIndex(slot.DataHoraAula)].push(slot);
-    }
-    for (const day of days) {
-      day.sort((a, b) => a.DataHoraAula.localeCompare(b.DataHoraAula));
-    }
-    return days;
-  }, [slots]);
+  const weekTabs = useMemo(() => buildWeekTabs(), []);
+  const grouped = useMemo(() => groupSlotsByDay(weekTabs, slots), [weekTabs, slots]);
 
   useEffect(() => {
     if (dayInitialized.current || slots.length === 0) return;
-    setSelectedDay(todayTabIndex(weekTabs, slots));
+    setSelectedDay(todayTabIndex(weekTabs, grouped));
     dayInitialized.current = true;
-  }, [slots, weekTabs]);
+  }, [slots, weekTabs, grouped]);
 
   const createPlan = async (idgrelha: number) => {
     setError("");
@@ -177,20 +175,20 @@ const WeekPage: FC<WeekPageProps> = ({ user }) => {
               <button
                 aria-selected={selectedDay === tab.index}
                 className={`day-tab${selectedDay === tab.index ? " active" : ""}`}
-                key={tab.label}
+                key={tab.dateKey}
                 onClick={() => setSelectedDay(tab.index)}
                 role="tab"
                 type="button"
               >
                 <span className="day-tab-label">{tab.label}</span>
-                {tab.dateNum > 0 && <span className="day-tab-date">{tab.dateNum}</span>}
+                <span className="day-tab-date">{tab.dateNum}</span>
               </button>
             ))}
           </div>
 
           <section className="day-list">
-            {grouped[selectedDay].length === 0 && <div className="empty-day">Sem aulas neste dia</div>}
-            {grouped[selectedDay].map((slot) => (
+            {(grouped[selectedDay] ?? []).length === 0 && <div className="empty-day">Sem aulas neste dia</div>}
+            {(grouped[selectedDay] ?? []).map((slot) => (
               <ClassCard
                 compact
                 disabled={!user.gogymLinked}
@@ -205,23 +203,25 @@ const WeekPage: FC<WeekPageProps> = ({ user }) => {
 
       {!loading && isDesktop && (
         <div className="week-grid">
-          {grouped.map((daySlots, index) => (
-            <section className="day-column" key={DAY_LABELS[index]}>
-              <div className="day-header">
-                {weekTabs[index]?.label ?? DAY_LABELS[index]}
-                {weekTabs[index]?.dateNum ? ` ${weekTabs[index].dateNum}` : ""}
-              </div>
-              {daySlots.length === 0 && <div className="meta">Sem aulas</div>}
-              {daySlots.map((slot) => (
-                <ClassCard
-                  disabled={!user.gogymLinked}
-                  key={`${slot.IDgrelha}-${slot.DataHoraAula}`}
-                  onCreatePlan={createPlan}
-                  slot={slot}
-                />
-              ))}
-            </section>
-          ))}
+          {weekTabs.map((tab) => {
+            const daySlots = grouped[tab.index] ?? [];
+            return (
+              <section className="day-column" key={tab.dateKey}>
+                <div className="day-header">
+                  {tab.label} {tab.dateNum}
+                </div>
+                {daySlots.length === 0 && <div className="meta">Sem aulas</div>}
+                {daySlots.map((slot) => (
+                  <ClassCard
+                    disabled={!user.gogymLinked}
+                    key={`${slot.IDgrelha}-${slot.DataHoraAula}`}
+                    onCreatePlan={createPlan}
+                    slot={slot}
+                  />
+                ))}
+              </section>
+            );
+          })}
         </div>
       )}
 

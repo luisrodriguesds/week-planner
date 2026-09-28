@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createGoGymClient } from "./client.js";
+import { GoGymHttpError } from "./errors.js";
 import type { GoGymClass } from "./types.js";
 
 const baseSlot: GoGymClass = {
@@ -54,4 +55,20 @@ describe("createGoGymClient", () => {
     expect(result.idMarcacao).toBe(179112);
     expect(fetchMock.mock.calls[0][0]).toContain("insert_marcacao.php");
   });
+
+  it("should throw GoGymHttpError with status and body when HTTP fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => "internal error",
+    }));
+
+    const client = createGoGymClient({ baseUrl: "https://gogym.gomygym.com", centerId: 1 });
+    await expect(client.bookClass("999", baseSlot)).rejects.toMatchObject({
+      name: "GoGymHttpError",
+      status: 500,
+      responseBody: "internal error",
+    } satisfies Partial<GoGymHttpError>);
+  });
 });
+

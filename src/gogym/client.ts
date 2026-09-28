@@ -1,4 +1,5 @@
 import { buildBookPayload } from "./book.js";
+import { GoGymHttpError } from "./errors.js";
 import type {
   BookResult,
   CancelResult,
@@ -20,7 +21,10 @@ export function createGoGymClient(config: GoGymClientConfig) {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params,
     });
-    if (!res.ok) throw new Error(`GoGym ${path} HTTP ${res.status}`);
+    if (!res.ok) {
+      const responseBody = await res.text().catch(() => "");
+      throw new GoGymHttpError(path, res.status, responseBody);
+    }
     return res.json() as Promise<T>;
   };
 
